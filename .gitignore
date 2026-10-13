@@ -1,0 +1,31 @@
+# Секреты — никогда не коммитить
+.env
+.env.*
+!.env.example
+
+# Данные и базы
+data/*
+!data/.gitkeep
+backend/data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Node
+node_modules/
+dist/
+*.local
+
+# Редакторы / ОС
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

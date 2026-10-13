@@ -1,0 +1,39 @@
+# Arena — всё поднимается одной командой: docker compose up
+# Редактировать здесь ничего не нужно: все настройки — в .env (см. .env.example).
+
+name: arena
+
+services:
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    volumes:
+      # SQLite-файл живёт в ./data на хосте (путь — DB_PATH в .env)
+      - ./data:/app/data
+    extra_hosts:
+      # Чтобы host.docker.internal работал и на Linux (Ollama и т.п.)
+      - "host.docker.internal:host-gateway"
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request as u; u.urlopen('http://127.0.0.1:8000/health', timeout=3).read()\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # Vite «запекает» переменную на этапе сборки; пусто = относительный /api
+        VITE_API_URL: ${VITE_API_URL:-}
+    ports:
+      - "${PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
