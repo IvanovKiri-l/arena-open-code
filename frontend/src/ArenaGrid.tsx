@@ -15,6 +15,10 @@ type Props = {
   live: boolean;
   /** Пользователь попросил показать проигравших обратно. */
   revealAll: boolean;
+  /** Победитель занял весь грид (после того как проигравшие растворились). */
+  hero: boolean;
+  /** Клик по ответу: раскрыть и предложить скачать. */
+  onOpen: (record: ResponseRecord) => void;
 };
 
 type Particle = { x: number; y: number; dx: number; dy: number; delay: number };
@@ -41,25 +45,30 @@ const STATUS_KEYS: Record<string, "statusError" | "statusDisqualified"> = {
   disqualified: "statusDisqualified",
 };
 
-export default function ArenaGrid({ tiles, winnerId, live, revealAll }: Props) {
+export default function ArenaGrid({ tiles, winnerId, live, revealAll, hero, onOpen }: Props) {
   const { t } = useI18n();
 
   return (
-    <section className="grid">
+    <section className={`grid${hero ? " grid-hero" : ""}`}>
       {tiles.map((tile, index) => {
         const record = tile.record;
         const isWinner = record !== null && record.id === winnerId;
         const streaming = record === null && tile.text.length > 0;
         const state = record ? record.status : streaming ? "streaming" : "idle";
         const crumble = live && !revealAll && winnerId !== null && !isWinner;
+        const heroTile = hero && isWinner;
+        const hidden = hero && !isWinner;
         const statusKey = record && record.status !== "ok" ? STATUS_KEYS[record.status] : undefined;
 
         const classes = [
           "tile",
           `tile-${state}`,
           isWinner ? "tile-winner" : "",
-          isWinner && live ? "tile-winner-pop" : "",
+          isWinner && live && !hero ? "tile-winner-pop" : "",
+          heroTile ? "tile-hero" : "",
           crumble ? "tile-crumbling" : "",
+          hidden ? "tile-hidden" : "",
+          record ? "tile-clickable" : "",
         ]
           .filter(Boolean)
           .join(" ");
@@ -69,6 +78,8 @@ export default function ArenaGrid({ tiles, winnerId, live, revealAll }: Props) {
             key={tile.slot}
             className={classes}
             style={crumble ? ({ "--delay": `${index * 45}ms` } as CSSProperties) : undefined}
+            onClick={record ? () => onOpen(record) : undefined}
+            title={record ? t("tileOpenHint") : undefined}
           >
             {crumble && (
               <span className="particles" aria-hidden="true">
@@ -103,6 +114,7 @@ export default function ArenaGrid({ tiles, winnerId, live, revealAll }: Props) {
               </span>
             </header>
             <p className="tile-body">{tile.text || "…"}</p>
+            {heroTile && <p className="tile-hint">{t("heroHint")}</p>}
             {record?.error && <p className="tile-err">{record.error}</p>}
             <footer className="tile-foot">
               {record && record.status === "ok" && (

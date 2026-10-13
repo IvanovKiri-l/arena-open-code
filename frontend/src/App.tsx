@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import AnswerModal from "./AnswerModal";
 import ArenaGrid, { type Tile } from "./ArenaGrid";
 import VerdictPanel from "./VerdictPanel";
 import {
@@ -111,6 +112,8 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [revoting, setRevoting] = useState(false);
   const [revealLosers, setRevealLosers] = useState(false);
+  const [heroWinner, setHeroWinner] = useState(false);
+  const [modalRecord, setModalRecord] = useState<ResponseRecord | null>(null);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const closeStream = useRef<(() => void) | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -131,6 +134,18 @@ export default function App() {
     refreshHistory();
     return () => closeStream.current?.();
   }, [refreshHistory]);
+
+  const live = view?.source === "live";
+
+  // После того как проигравшие растворились, победитель занимает весь грид.
+  useEffect(() => {
+    if (!live || !view?.winnerId || revealLosers) {
+      setHeroWinner(false);
+      return;
+    }
+    const timer = window.setTimeout(() => setHeroWinner(true), 1400);
+    return () => window.clearTimeout(timer);
+  }, [live, view?.winnerId, revealLosers]);
 
   const handleEvent = useCallback(
     (event: StreamEvent) => {
@@ -178,6 +193,8 @@ export default function App() {
     closeStream.current?.();
     setErrorMessage(null);
     setRevealLosers(false);
+    setHeroWinner(false);
+    setModalRecord(null);
     setPhase("running");
     setView({
       runId: "",
@@ -231,6 +248,7 @@ export default function App() {
 
   const handleOpenHistory = useCallback(async (runId: string) => {
     closeStream.current?.();
+    setModalRecord(null);
     try {
       const payload = await getRun(runId);
       setView(viewFromPayload(payload, "history"));
@@ -245,6 +263,7 @@ export default function App() {
 
   const handleImportFile = useCallback(async (file: File) => {
     closeStream.current?.();
+    setModalRecord(null);
     try {
       const payload = JSON.parse(await file.text()) as RunPayload;
       if (!payload || typeof payload.id !== "string" || !Array.isArray(payload.responses)) {
@@ -270,7 +289,6 @@ export default function App() {
         .filter((record): record is ResponseRecord => record !== null)
     : [];
   const busy = phase === "running" || phase === "verifying" || phase === "judging";
-  const live = view?.source === "live";
 
   const startLabel = busy
     ? phase === "verifying"
@@ -385,6 +403,8 @@ export default function App() {
             winnerId={view.winnerId}
             live={Boolean(live)}
             revealAll={revealLosers}
+            hero={heroWinner}
+            onOpen={setModalRecord}
           />
           <VerdictPanel
             winner={winner}
@@ -399,6 +419,15 @@ export default function App() {
             onToggleReveal={() => setRevealLosers((current) => !current)}
           />
         </>
+      )}
+
+      {modalRecord && (
+        <AnswerModal
+          record={modalRecord}
+          isWinner={view?.winnerId === modalRecord.id}
+          runId={view?.runId ?? ""}
+          onClose={() => setModalRecord(null)}
+        />
       )}
 
       {history.length > 0 && (

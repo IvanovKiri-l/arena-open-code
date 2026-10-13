@@ -51,6 +51,14 @@ const ru = {
   showLosers: "Показать проигравших",
   hideLosers: "Свернуть проигравших",
 
+  winnerBadge: "Победитель",
+  answerTitle: "Ответ #{slot}",
+  close: "Закрыть",
+  downloadTxt: "Скачать .txt",
+  downloadMd: "Скачать .md",
+  tileOpenHint: "Открыть и скачать ответ",
+  heroHint: "Нажмите, чтобы изучить и скачать ответ",
+
   history: "История",
   answersCount: "ответов: {n}",
 
@@ -107,6 +115,14 @@ const en: Record<MsgKey, string> = {
   judgeNote: "Judge {n}:",
   showLosers: "Show losers",
   hideLosers: "Hide losers",
+
+  winnerBadge: "Winner",
+  answerTitle: "Answer #{slot}",
+  close: "Close",
+  downloadTxt: "Download .txt",
+  downloadMd: "Download .md",
+  tileOpenHint: "Open and download answer",
+  heroHint: "Click to study and download answer",
 
   history: "History",
   answersCount: "answers: {n}",

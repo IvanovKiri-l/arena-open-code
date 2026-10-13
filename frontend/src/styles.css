@@ -1,17 +1,19 @@
 :root {
   color-scheme: dark;
-  --bg: #0a0d13;
-  --panel: #10151f;
-  --panel-2: #141b28;
-  --line: #202a3a;
-  --text: #e8ebf2;
-  --muted: #8b93a5;
-  --accent: #5b8cff;
-  --ok: #3ecf8e;
-  --err: #ff6b6b;
-  --win: #f5c542;
+  --bg: #0a0616;
+  --panel: #140d26;
+  --panel-2: #1b1132;
+  --line: #2c1e4f;
+  --text: #ece7f6;
+  --muted: #9a8fbf;
+  --accent: #a855f7;
+  --accent-2: #c084fc;
+  --ok: #45d6a5;
+  --err: #ff6b8a;
+  --win: #ffb3d9;
+  --win-strong: #ff8ec4;
   --radius: 14px;
-  --shadow: 0 10px 30px rgb(0 0 0 / 0.35);
+  --shadow: 0 14px 40px rgb(8 3 20 / 0.55);
 }
 
 * {
@@ -21,7 +23,9 @@
 body {
   margin: 0;
   background:
-    radial-gradient(1200px 600px at 15% -10%, rgb(91 140 255 / 0.08), transparent 60%),
+    radial-gradient(1100px 540px at 12% -8%, rgb(168 85 247 / 0.20), transparent 62%),
+    radial-gradient(900px 480px at 88% 2%, rgb(255 142 196 / 0.10), transparent 58%),
+    radial-gradient(760px 420px at 50% 110%, rgb(124 58 237 / 0.12), transparent 60%),
     var(--bg);
   color: var(--text);
   font: 15px/1.55 system-ui, "Segoe UI", sans-serif;
@@ -70,12 +74,14 @@ body {
   transition:
     border-color 140ms ease,
     background-color 140ms ease,
+    box-shadow 140ms ease,
     transform 140ms ease;
 }
 
 .ghost:hover:not(:disabled) {
   border-color: var(--accent);
-  background: rgb(91 140 255 / 0.08);
+  background: rgb(168 85 247 / 0.12);
+  box-shadow: 0 0 14px rgb(168 85 247 / 0.25);
 }
 
 .ghost:active:not(:disabled) {
@@ -113,10 +119,14 @@ body {
   transition: border-color 140ms ease, box-shadow 140ms ease;
 }
 
+.panel textarea::placeholder {
+  color: var(--muted);
+}
+
 .panel textarea:focus {
   outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgb(91 140 255 / 0.15);
+  box-shadow: 0 0 0 3px rgb(168 85 247 / 0.18);
 }
 
 .panel-side {
@@ -124,7 +134,7 @@ body {
   flex-direction: column;
   gap: 8px;
   justify-content: space-between;
-  min-width: 178px;
+  min-width: 182px;
 }
 
 .judges-select {
@@ -147,19 +157,19 @@ body {
 
 .panel button {
   padding: 12px 18px;
-  background: linear-gradient(180deg, #6b97ff, var(--accent));
+  background: linear-gradient(180deg, var(--accent-2), var(--accent));
   color: #fff;
   border: 0;
   border-radius: var(--radius);
   font-weight: 600;
   font: inherit;
   cursor: pointer;
-  box-shadow: 0 6px 18px rgb(91 140 255 / 0.25);
+  box-shadow: 0 6px 22px rgb(168 85 247 / 0.35);
   transition: filter 140ms ease, transform 140ms ease;
 }
 
 .panel button:hover:not(:disabled) {
-  filter: brightness(1.07);
+  filter: brightness(1.08);
 }
 
 .panel button:active:not(:disabled) {
@@ -186,6 +196,11 @@ body {
   gap: 12px;
 }
 
+/* Победитель остался один — занимает весь грид по центру. */
+.grid-hero {
+  grid-template-columns: minmax(0, 1fr);
+}
+
 .tile {
   position: relative;
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
@@ -196,11 +211,15 @@ body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  transition: border-color 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, transform 160ms ease, box-shadow 160ms ease;
 }
 
 .tile:hover {
   transform: translateY(-1px);
+}
+
+.tile-clickable {
+  cursor: pointer;
 }
 
 .tile-head {
@@ -227,8 +246,15 @@ body {
   min-height: 16px;
 }
 
+.tile-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--win);
+}
+
 .tile-streaming {
   border-color: var(--accent);
+  box-shadow: 0 0 14px rgb(168 85 247 / 0.18);
 }
 
 .tile-error {
@@ -245,7 +271,11 @@ body {
   margin: 4px 0 0;
 }
 
-/* ── Победитель: «выпрыгивает» на экран в стиле macOS ─────────────── */
+.tile-hidden {
+  display: none;
+}
+
+/* ── Победитель: нежно-розовый и «выпрыгивает» на экран ───────────── */
 
 .tile-winner {
   border-color: var(--win);
@@ -271,12 +301,12 @@ body {
   100% {
     box-shadow:
       0 0 0 1px var(--win),
-      0 10px 30px rgb(245 197 66 / 0.16);
+      0 10px 32px rgb(255 142 196 / 0.20);
   }
   50% {
     box-shadow:
       0 0 0 1px var(--win),
-      0 16px 46px rgb(245 197 66 / 0.36);
+      0 18px 52px rgb(255 142 196 / 0.42);
   }
 }
 
@@ -285,6 +315,40 @@ body {
   animation:
     winner-pop 820ms cubic-bezier(0.34, 1.56, 0.64, 1) both,
     winner-glow 2.6s ease-in-out 0.8s infinite;
+}
+
+/* Победитель встал на весь грид. */
+.tile-hero {
+  min-height: min(62vh, 620px);
+  border-color: var(--win);
+  box-shadow:
+    0 0 0 1px var(--win),
+    0 22px 70px rgb(255 142 196 / 0.22);
+  animation:
+    hero-expand 720ms cubic-bezier(0.22, 1.2, 0.36, 1) both,
+    winner-glow 3s ease-in-out 1s infinite;
+}
+
+@keyframes hero-expand {
+  0% {
+    transform: scale(0.9);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.tile-hero .tile-body {
+  max-height: 44vh;
+  overflow: hidden;
+  font-size: 14px;
+}
+
+.tile-hero .tile-num {
+  font-size: 13px;
+  color: var(--win);
 }
 
 /* ── Проигравшие: рассыпаются, как удаляемое приложение ───────────── */
@@ -337,8 +401,8 @@ body {
   width: 5px;
   height: 5px;
   border-radius: 2px;
-  background: var(--muted);
-  opacity: 0.85;
+  background: var(--win);
+  opacity: 0.7;
   animation: particle-fly 760ms ease-out both;
   animation-delay: var(--delay, 0ms);
 }
@@ -374,6 +438,7 @@ body {
 
 .verdict-winner {
   margin: 12px 0;
+  color: var(--win);
 }
 
 .scores {
@@ -411,6 +476,99 @@ body {
 
 .judge-err {
   color: var(--err);
+}
+
+/* ── Модальное окно: изучить и скачать ответ ──────────────────────── */
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(8 3 20 / 0.72);
+  backdrop-filter: blur(6px);
+}
+
+@keyframes modal-in {
+  from {
+    transform: translateY(14px) scale(0.98);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+.modal {
+  width: min(880px, 100%);
+  max-height: 86vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px 20px;
+  box-shadow: 0 30px 90px rgb(0 0 0 / 0.6);
+  animation: modal-in 240ms cubic-bezier(0.22, 1.2, 0.36, 1) both;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-head h2 {
+  margin: 0;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.badge {
+  color: var(--win);
+  border: 1px solid var(--win);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.modal-meta {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.modal-error {
+  margin: 6px 0 0;
+  color: var(--err);
+  font-size: 13px;
+}
+
+.modal-text {
+  flex: 1;
+  overflow: auto;
+  margin: 12px 0;
+  padding: 12px 14px;
+  background: rgb(10 6 22 / 0.55);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 /* ── История ──────────────────────────────────────────────────────── */
@@ -466,11 +624,17 @@ body {
 /* ── Уважение к настройкам доступности ────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .tile-winner-pop {
+  .tile-winner-pop,
+  .tile-hero,
+  .modal {
     animation: none;
+  }
+
+  .tile-winner-pop,
+  .tile-hero {
     box-shadow:
       0 0 0 1px var(--win),
-      0 10px 30px rgb(245 197 66 / 0.2);
+      0 12px 36px rgb(255 142 196 / 0.24);
   }
 
   .tile-crumbling {
