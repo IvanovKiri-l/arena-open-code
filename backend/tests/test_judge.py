@@ -164,12 +164,6 @@ class TestParseVerdict(unittest.TestCase):
 
 
 class TestPickWinner(unittest.TestCase):
-    SELECTED = [
-        {"id": "a", "slot": 1},
-        {"id": "b", "slot": 2},
-        {"id": "c", "slot": 3},
-    ]
-
     @staticmethod
     def verdict(winner: str, scores: dict[str, float]) -> dict:
         return {
@@ -184,24 +178,28 @@ class TestPickWinner(unittest.TestCase):
             self.verdict("a", {"a": 8, "b": 7, "c": 6}),
             self.verdict("b", {"a": 3, "b": 9, "c": 4}),
         ]
-        self.assertEqual(pick_winner(verdicts, self.SELECTED), "a")
+        self.assertEqual(pick_winner(verdicts), "a")
 
     def test_tie_broken_by_total_score(self) -> None:
         verdicts = [
             self.verdict("a", {"a": 5, "b": 9}),
             self.verdict("b", {"a": 5, "b": 9}),
         ]
-        self.assertEqual(pick_winner(verdicts, self.SELECTED), "b")
+        self.assertEqual(pick_winner(verdicts), "b")
 
-    def test_full_tie_broken_by_slot(self) -> None:
+    def test_full_tie_is_fair_lottery(self) -> None:
+        # полное равенство: без преимущества у низких слотов — честная жеребьёвка
         verdicts = [
             self.verdict("b", {"a": 5, "b": 5}),
             self.verdict("a", {"a": 5, "b": 5}),
         ]
-        self.assertEqual(pick_winner(verdicts, self.SELECTED), "a")
+        same_seed = {pick_winner(verdicts, random.Random(1)) for _ in range(3)}
+        self.assertEqual(len(same_seed), 1, "при одном seed результат детерминирован")
+        winners = {pick_winner(verdicts, random.Random(seed)) for seed in range(30)}
+        self.assertEqual(winners, {"a", "b"}, "при полном равенстве могут побеждать оба")
 
     def test_no_verdicts(self) -> None:
-        self.assertIsNone(pick_winner([], self.SELECTED))
+        self.assertIsNone(pick_winner([]))
 
 
 class JudgeRunTestBase(unittest.IsolatedAsyncioTestCase):

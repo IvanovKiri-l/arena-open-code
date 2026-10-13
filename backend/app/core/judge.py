@@ -115,7 +115,7 @@ async def judge_run(
         # при фоновом сбое провайдера лучше сохранить прежний вердикт.
         return JudgeResult(None, [], errors)
 
-    winner = pick_winner(verdicts, selected)
+    winner = pick_winner(verdicts, rnd)
     _persist(run_id, verdicts, winner)
     return JudgeResult(winner, verdicts, errors)
 
@@ -180,9 +180,14 @@ async def _run_single_judge(
 
 
 def pick_winner(
-    verdicts: list[dict[str, Any]], selected: list[dict[str, Any]]
+    verdicts: list[dict[str, Any]],
+    rng: random.Random | None = None,
 ) -> str | None:
-    """Победитель: большинство голосов → сумма баллов → номер слота."""
+    """Победитель: большинство голосов → сумма баллов → честная жеребьёвка.
+
+    Важно: при полном равенстве выбираем случайно, а не по номеру слота, —
+    иначе у низких слотов появляется системное преимущество («любимчики»).
+    """
     if not verdicts:
         return None
 
@@ -198,8 +203,13 @@ def pick_winner(
     for verdict in verdicts:
         for item in verdict.get("scores") or []:
             totals[item["id"]] += float(item["score"])
-    slot_of = {r["id"]: r.get("slot", 0) for r in selected}
-    return min(tied, key=lambda rid: (-totals.get(rid, 0.0), slot_of.get(rid, 1 << 30)))
+    best_total = max(totals.get(item, 0.0) for item in tied)
+    finalists = sorted(item for item in tied if totals.get(item, 0.0) == best_total)
+    if len(finalists) == 1:
+        return finalists[0]
+
+    lottery = rng or random.Random()
+    return lottery.choice(finalists)
 
 
 def _persist(run_id: str, verdicts: list[dict[str, Any]], winner_id: str | None) -> None:

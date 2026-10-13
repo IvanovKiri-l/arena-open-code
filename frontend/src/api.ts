@@ -68,6 +68,9 @@ export function exportRunUrl(runId: string): string {
   return apiUrl(`/arena/${runId}/export`);
 }
 
+//: Служебный маркер: UI заменяет его на локализованный текст.
+export const STREAM_TERMINATED = "__stream_terminated__";
+
 // Живой поток событий забега (SSE). Возвращает функцию отписки.
 export function openRunStream(
   runId: string,
@@ -103,7 +106,7 @@ export function openRunStream(
     errorsWithoutData += 1;
     if (errorsWithoutData >= 5) {
       close();
-      onEvent({ type: "error", message: "поток событий оборван" });
+      onEvent({ type: "error", message: STREAM_TERMINATED });
       onEvent({ type: "end" });
     }
   };

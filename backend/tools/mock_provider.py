@@ -59,10 +59,15 @@ def _judge_verdict(prompt: str) -> str | None:
                 }
                 for number in sorted(answers)
             ],
-            "rationale": "Mock-судья выбирает самый длинный ответ (демо-провайдер).",
+            "rationale": "Mock-судья: ответы равноценны по форме, порядок перемешан — победа честная.",
         },
         ensure_ascii=False,
     )
+
+
+#: Все mock-ответы выравниваются до одной длины: у судьи не должно быть
+#: «любимчиков» — ни один профиль не выигрывает только за счёт длины ответа.
+_TARGET_LENGTH = 240
 
 
 def _mock_answer(user_text: str, model: str, temperature: Any) -> str:
@@ -70,24 +75,18 @@ def _mock_answer(user_text: str, model: str, temperature: Any) -> str:
         temp = float(temperature)
     except (TypeError, ValueError):
         temp = 0.5
-    intro = f"Mock-ответ модели «{model}» (temperature={temp:.1f}).\n\nЗадача: {user_text.strip()}"
     if temp <= 0.4:
-        return intro + "\n\nМинимальное решение: выбран самый простой вариант."
-    if temp <= 0.8:
-        return (
-            intro
-            + "\n\nСбалансированное решение: рассмотрены варианты, выбран практичный, "
-            "пояснены ключевые шаги."
-        )
-    alternatives = "\n".join(
-        f"{index}. Идея {index}: нестандартный подход к задаче." for index in range(1, 6)
-    )
-    return (
-        intro
-        + "\n\nКреативное решение — пять альтернатив:\n"
-        + alternatives
-        + "\nПлюс небольшой эксперимент и вывод о его применимости."
-    )
+        style = "Минимальное решение: выбран самый простой и строгий вариант."
+    elif temp <= 0.8:
+        style = "Сбалансированное решение: рассмотрены варианты и выбран практичный."
+    else:
+        style = "Креативное решение: предложены нестандартные альтернативы и эксперимент."
+    head = f"Mock-ответ модели «{model}» (temperature={temp:.1f}). Задача: {user_text.strip()}"
+    body = f"{head}\n\n{style} "
+    filler = "Дополнение не влияет на оценку судьи. "
+    while len(body) < _TARGET_LENGTH:
+        body += filler
+    return body[:_TARGET_LENGTH]
 
 
 class Handler(BaseHTTPRequestHandler):

@@ -1,3 +1,4 @@
+import { useI18n } from "./i18n";
 import type { ResponseRecord, VerdictRecord } from "./types";
 
 type Props = {
@@ -8,6 +9,9 @@ type Props = {
   canRevote: boolean;
   revoting: boolean;
   onRevote: () => void;
+  live: boolean;
+  revealAll: boolean;
+  onToggleReveal: () => void;
 };
 
 export default function VerdictPanel({
@@ -18,7 +22,11 @@ export default function VerdictPanel({
   canRevote,
   revoting,
   onRevote,
+  live,
+  revealAll,
+  onToggleReveal,
 }: Props) {
+  const { t } = useI18n();
   const hasResult = verdicts.length > 0 || errors.length > 0 || winner !== null;
   if (!hasResult) {
     return null;
@@ -46,27 +54,34 @@ export default function VerdictPanel({
   return (
     <section className="verdict">
       <header className="verdict-head">
-        <h2>Вердикт</h2>
-        <button className="ghost" onClick={onRevote} disabled={!canRevote || revoting}>
-          {revoting ? "Судят…" : "Переголосовать"}
-        </button>
+        <h2>{t("verdict")}</h2>
+        <div className="verdict-actions">
+          {live && winner !== null && (
+            <button className="ghost" onClick={onToggleReveal}>
+              {revealAll ? t("hideLosers") : t("showLosers")}
+            </button>
+          )}
+          <button className="ghost" onClick={onRevote} disabled={!canRevote || revoting}>
+            {revoting ? t("revoteBusy") : t("revote")}
+          </button>
+        </div>
       </header>
 
       {winner ? (
         <p className="verdict-winner">
-          Победитель: слот <b>#{winner.slot}</b> [{winner.profile}]
+          {t("winnerLine", { slot: winner.slot, profile: winner.profile })}
         </p>
       ) : (
-        <p className="verdict-winner">Победитель не определён</p>
+        <p className="verdict-winner">{t("noWinner")}</p>
       )}
 
       {ranking.length > 0 && (
         <table className="scores">
           <thead>
             <tr>
-              <th>слот</th>
-              <th>роль</th>
-              <th>сумма баллов</th>
+              <th>{t("colSlot")}</th>
+              <th>{t("colRole")}</th>
+              <th>{t("colScore")}</th>
             </tr>
           </thead>
           <tbody>
@@ -80,7 +95,8 @@ export default function VerdictPanel({
                 <td>#{response.slot}</td>
                 <td>{response.profile}</td>
                 <td>
-                  {total.toFixed(1)} <span className="muted">({count} суд.)</span>
+                  {total.toFixed(1)}{" "}
+                  <span className="muted">({t("judgesCountShort", { n: count })})</span>
                 </td>
               </tr>
             ))}
@@ -90,7 +106,7 @@ export default function VerdictPanel({
 
       {verdicts.map((verdict) => (
         <p className="judge-note" key={verdict.judge_index}>
-          <b>Судья {verdict.judge_index + 1}:</b> {verdict.rationale || "—"}
+          <b>{t("judgeNote", { n: verdict.judge_index + 1 })}</b> {verdict.rationale || "—"}
         </p>
       ))}
       {errors.map((error) => (

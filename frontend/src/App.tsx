@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import ArenaGrid, { type Tile } from "./ArenaGrid";
 import VerdictPanel from "./VerdictPanel";
 import {
+  STREAM_TERMINATED,
   exportRunUrl,
   getHealth,
   getRun,
@@ -10,6 +11,7 @@ import {
   rejudge,
   startRun,
 } from "./api";
+import { useI18n } from "./i18n";
 import type {
   Health,
   JudgeResultPayload,
@@ -98,6 +100,7 @@ function applyEvent(view: View, event: StreamEvent): View {
 }
 
 export default function App() {
+  const { lang, setLang, t } = useI18n();
   const [health, setHealth] = useState<Health | null>(null);
   const [offline, setOffline] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -107,6 +110,7 @@ export default function App() {
   const [view, setView] = useState<View | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [revoting, setRevoting] = useState(false);
+  const [revealLosers, setRevealLosers] = useState(false);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const closeStream = useRef<(() => void) | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
@@ -141,7 +145,9 @@ export default function App() {
         refreshHistory();
       }
       if (event.type === "error") {
-        setErrorMessage(event.message);
+        setErrorMessage(
+          event.message === STREAM_TERMINATED ? t("streamTerminated") : event.message,
+        );
         setPhase("error");
       }
       if (event.type === "end") {
@@ -155,8 +161,14 @@ export default function App() {
         current && current.source === "live" ? applyEvent(current, event) : current,
       );
     },
-    [refreshHistory],
+    [t, refreshHistory],
   );
+
+  // Свежий обработчик для уже открытого SSE-потока (язык мог переключиться).
+  const handleEventRef = useRef(handleEvent);
+  useEffect(() => {
+    handleEventRef.current = handleEvent;
+  }, [handleEvent]);
 
   const handleStart = useCallback(async () => {
     const text = prompt.trim();
@@ -165,6 +177,7 @@ export default function App() {
     }
     closeStream.current?.();
     setErrorMessage(null);
+    setRevealLosers(false);
     setPhase("running");
     setView({
       runId: "",
@@ -184,12 +197,12 @@ export default function App() {
       setView((current) =>
         current && current.source === "live" ? { ...current, runId: run_id } : current,
       );
-      closeStream.current = openRunStream(run_id, handleEvent);
+      closeStream.current = openRunStream(run_id, (event) => handleEventRef.current(event));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setPhase("error");
     }
-  }, [prompt, phase, health, judgesCount, verifyEnabled, handleEvent]);
+  }, [prompt, phase, health, judgesCount, verifyEnabled]);
 
   const handleRevote = useCallback(async () => {
     if (!view || view.source === "import" || !view.runId) {
@@ -235,7 +248,7 @@ export default function App() {
     try {
       const payload = JSON.parse(await file.text()) as RunPayload;
       if (!payload || typeof payload.id !== "string" || !Array.isArray(payload.responses)) {
-        throw new Error("это не похоже на экспорт забега Arena");
+        throw new Error("это не похоже на экспорт забега Arena / this is not an Arena run export");
       }
       setView(viewFromPayload(payload, "import"));
       setPrompt(payload.prompt ?? "");
@@ -257,35 +270,49 @@ export default function App() {
         .filter((record): record is ResponseRecord => record !== null)
     : [];
   const busy = phase === "running" || phase === "verifying" || phase === "judging";
+  const live = view?.source === "live";
+
+  const startLabel = busy
+    ? phase === "verifying"
+      ? t("verifying")
+      : phase === "judging"
+        ? t("judging")
+        : t("running")
+    : t("start");
 
   const statusLine = offline
-    ? "Бэкенд недоступен — запустите: docker compose up"
+    ? t("backendOffline")
     : health
-      ? `Бэкенд на связи · модель: ${health.model ?? "не задана"}` +
-        (health.llm_configured ? "" : " · заполните LLM_API_KEY в .env")
-      : "Проверяю бэкенд…";
+      ? `${t("backendOnline")} · ${t("modelLabel", {
+          model: health.model ?? t("modelNotSet"),
+        })}` + (health.llm_configured ? "" : ` · ${t("fillKey")}`)
+      : t("checkingBackend");
 
   return (
     <main className="page">
       <header className="head">
         <div>
-          <h1>Арена</h1>
-          <p>
-            Один промпт — {health?.arena_n ?? 10} параллельных инстансов модели — один
-            победитель.
-          </p>
+          <h1>{t("appTitle")}</h1>
+          <p>{t("subtitle", { n: health?.arena_n ?? 10 })}</p>
         </div>
         <div className="head-actions">
+          <button
+            className="ghost lang-switch"
+            onClick={() => setLang(lang === "ru" ? "en" : "ru")}
+            title={lang === "ru" ? t("switchToEn") : t("switchToRu")}
+          >
+            {lang === "ru" ? "EN" : "RU"}
+          </button>
           <button
             className="ghost"
             onClick={() => fileInput.current?.click()}
             disabled={busy}
           >
-            Импорт
+            {t("import")}
           </button>
           {view && view.source !== "import" && view.runId && (
             <a className="ghost" href={exportRunUrl(view.runId)}>
-              Экспорт
+              {t("export")}
             </a>
           )}
           <input
@@ -306,7 +333,7 @@ export default function App() {
 
       <section className="panel">
         <textarea
-          placeholder="Введите промпт…"
+          placeholder={t("promptPlaceholder")}
           value={prompt}
           onChange={(event) => setPrompt(event.target.value)}
           disabled={busy}
@@ -315,12 +342,10 @@ export default function App() {
           <label
             className="judges-select"
             title={
-              health?.verify_cmd_set
-                ? "Прогнать ответы через VERIFY_CMD из .env"
-                : "Задайте VERIFY_CMD в .env, чтобы включить верификацию"
+              health?.verify_cmd_set ? t("verificationHintOn") : t("verificationHintOff")
             }
           >
-            Верификация
+            {t("verification")}
             <input
               type="checkbox"
               checked={verifyEnabled && Boolean(health?.verify_cmd_set)}
@@ -329,24 +354,18 @@ export default function App() {
             />
           </label>
           <label className="judges-select">
-            Судей:
+            {t("judgesLabel")}
             <select
               value={judgesCount}
               onChange={(event) => setJudgesCount(Number(event.target.value))}
               disabled={busy}
             >
-              <option value={1}>1</option>
-              <option value={3}>3 (жюри)</option>
+              <option value={1}>{t("judgesOne")}</option>
+              <option value={3}>{t("judgesPanel")}</option>
             </select>
           </label>
           <button onClick={() => void handleStart()} disabled={busy || !prompt.trim()}>
-            {busy
-              ? phase === "verifying"
-                ? "Проверяю код…"
-                : phase === "judging"
-                  ? "Судят…"
-                  : "Арена идёт…"
-              : "Запустить арену"}
+            {startLabel}
           </button>
         </div>
       </section>
@@ -357,11 +376,16 @@ export default function App() {
         <>
           {view.source !== "live" && (
             <p className="muted run-note">
-              {view.source === "import" ? "Импортированный забег" : "Забег из истории"}:{" "}
+              {view.source === "import" ? t("importedRun") : t("historyRun")}:{" "}
               {view.prompt.slice(0, 120)}
             </p>
           )}
-          <ArenaGrid tiles={view.tiles} winnerId={view.winnerId} />
+          <ArenaGrid
+            tiles={view.tiles}
+            winnerId={view.winnerId}
+            live={Boolean(live)}
+            revealAll={revealLosers}
+          />
           <VerdictPanel
             winner={winner}
             responses={responses}
@@ -370,13 +394,16 @@ export default function App() {
             canRevote={view.source !== "import" && !busy && Boolean(view.runId)}
             revoting={revoting}
             onRevote={() => void handleRevote()}
+            live={Boolean(live)}
+            revealAll={revealLosers}
+            onToggleReveal={() => setRevealLosers((current) => !current)}
           />
         </>
       )}
 
       {history.length > 0 && (
         <section className="history">
-          <h2>История</h2>
+          <h2>{t("history")}</h2>
           <ul>
             {history.map((item) => (
               <li key={item.id}>
@@ -385,8 +412,8 @@ export default function App() {
                   onClick={() => void handleOpenHistory(item.id)}
                   disabled={busy}
                 >
-                  {new Date(item.created_at).toLocaleString()} · ответов:{" "}
-                  {item.responses_count} · {item.prompt.slice(0, 60)}
+                  {new Date(item.created_at).toLocaleString()} ·{" "}
+                  {t("answersCount", { n: item.responses_count })} · {item.prompt.slice(0, 60)}
                 </button>
               </li>
             ))}
