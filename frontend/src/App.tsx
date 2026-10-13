@@ -33,6 +33,7 @@ type View = {
   verdicts: VerdictRecord[];
   winnerId: string | null;
   judgeErrors: string[];
+  answersDir: string | null;
   source: Source;
 };
 
@@ -47,6 +48,7 @@ function viewFromPayload(payload: RunPayload, source: Source): View {
     verdicts: payload.verdicts ?? [],
     winnerId: payload.winner_id ?? null,
     judgeErrors: [],
+    answersDir: payload.answers_dir ?? null,
     source,
   };
 }
@@ -95,6 +97,8 @@ function applyEvent(view: View, event: StreamEvent): View {
         winnerId: event.data.winner_id ?? null,
         judgeErrors: event.data.errors ?? [],
       };
+    case "answers_saved":
+      return { ...view, answersDir: event.data.dir || null };
     default:
       return view;
   }
@@ -113,9 +117,15 @@ export default function App() {
   const [revoting, setRevoting] = useState(false);
   const [revealLosers, setRevealLosers] = useState(false);
   const [heroWinner, setHeroWinner] = useState(false);
+  const [stageInfo, setStageInfo] = useState<{
+    index: number;
+    total: number;
+    title: string;
+  } | null>(null);
   const [modalRecord, setModalRecord] = useState<ResponseRecord | null>(null);
   const [history, setHistory] = useState<RunSummary[]>([]);
   const closeStream = useRef<(() => void) | null>(null);
+  const streamRunId = useRef<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const refreshHistory = useCallback(() => {
@@ -123,6 +133,32 @@ export default function App() {
       .then(setHistory)
       .catch(() => setOffline(true));
   }, []);
+
+  // Догнать финальное состояние из API (страховка, если стрим оборвался).
+  const syncRun = useCallback(
+    async (runId: string) => {
+      try {
+        const payload = await getRun(runId);
+        setView((current) =>
+          current && current.source === "live" && current.runId === runId
+            ? viewFromPayload(payload, "live")
+            : current,
+        );
+        if (payload.status === "done" || payload.winner_id) {
+          setPhase((current) =>
+            current === "running" || current === "verifying" || current === "judging"
+              ? "done"
+              : current,
+          );
+          setStageInfo(null);
+        }
+      } catch {
+        // не страшно: состояние обновится при следующей перезагрузке
+      }
+      refreshHistory();
+    },
+    [refreshHistory],
+  );
 
   useEffect(() => {
     getHealth()
@@ -132,7 +168,11 @@ export default function App() {
       })
       .catch(() => setOffline(true));
     refreshHistory();
-    return () => closeStream.current?.();
+    return () => {
+      closeStream.current?.();
+      closeStream.current = null;
+      streamRunId.current = null;
+    };
   }, [refreshHistory]);
 
   const live = view?.source === "live";
@@ -148,15 +188,36 @@ export default function App() {
   }, [live, view?.winnerId, revealLosers]);
 
   const handleEvent = useCallback(
-    (event: StreamEvent) => {
+    (runId: string, event: StreamEvent) => {
       if (event.type === "verifying") {
         setPhase("verifying");
+      }
+      if (event.type === "screening") {
+        setPhase("judging");
+        setStageInfo(null);
+      }
+      if (event.type === "stage") {
+        setStageInfo(event.data);
+        if (event.data.index > 1) {
+          // новый этап заменяет текст стрима в плитках
+          setView((current) =>
+            current && current.source === "live"
+              ? {
+                  ...current,
+                  tiles: current.tiles.map((tile) =>
+                    tile.record ? tile : { ...tile, text: "" },
+                  ),
+                }
+              : current,
+          );
+        }
       }
       if (event.type === "judging") {
         setPhase("judging");
       }
       if (event.type === "verdict") {
         setPhase("done");
+        setStageInfo(null);
         refreshHistory();
       }
       if (event.type === "error") {
@@ -166,24 +227,52 @@ export default function App() {
         setPhase("error");
       }
       if (event.type === "end") {
+        streamRunId.current = null;
+        closeStream.current = null;
+        setStageInfo(null);
         setPhase((current) =>
           current === "running" || current === "verifying" || current === "judging"
             ? "done"
             : current,
         );
+        // Страховка: догоняем финальное состояние из API, если что-то потерялось.
+        void syncRun(runId);
       }
       setView((current) =>
         current && current.source === "live" ? applyEvent(current, event) : current,
       );
     },
-    [t, refreshHistory],
+    [t, refreshHistory, syncRun],
   );
 
   // Свежий обработчик для уже открытого SSE-потока (язык мог переключиться).
-  const handleEventRef = useRef(handleEvent);
+  const handleEventRef = useRef<(runId: string, event: StreamEvent) => void>(
+    () => undefined,
+  );
   useEffect(() => {
     handleEventRef.current = handleEvent;
   }, [handleEvent]);
+
+  const attachStream = useCallback((runId: string) => {
+    closeStream.current?.();
+    streamRunId.current = runId;
+    closeStream.current = openRunStream(runId, (event) =>
+      handleEventRef.current(runId, event),
+    );
+  }, []);
+
+  // Если стрим потерялся (ремаунт, возврат вкладки) — переподключаемся:
+  // снапшот сервера восстановит состояние забега.
+  useEffect(() => {
+    const busyNow = phase === "running" || phase === "verifying" || phase === "judging";
+    if (!busyNow || !view || view.source !== "live" || !view.runId) {
+      return;
+    }
+    if (streamRunId.current === view.runId) {
+      return;
+    }
+    attachStream(view.runId);
+  }, [phase, view, attachStream]);
 
   const handleStart = useCallback(async () => {
     const text = prompt.trim();
@@ -194,6 +283,7 @@ export default function App() {
     setErrorMessage(null);
     setRevealLosers(false);
     setHeroWinner(false);
+    setStageInfo(null);
     setModalRecord(null);
     setPhase("running");
     setView({
@@ -203,23 +293,29 @@ export default function App() {
       verdicts: [],
       winnerId: null,
       judgeErrors: [],
+      answersDir: null,
       source: "live",
     });
 
     try {
-      const { run_id } = await startRun(text, {
+      const { run_id, stages } = await startRun(text, {
         judges: judgesCount,
         verify: health?.verify_cmd_set ? verifyEnabled : undefined,
       });
+      setStageInfo(
+        stages && stages.length > 1
+          ? { index: 1, total: stages.length, title: stages[0] }
+          : null,
+      );
       setView((current) =>
         current && current.source === "live" ? { ...current, runId: run_id } : current,
       );
-      closeStream.current = openRunStream(run_id, (event) => handleEventRef.current(event));
+      attachStream(run_id);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setPhase("error");
     }
-  }, [prompt, phase, health, judgesCount, verifyEnabled]);
+  }, [prompt, phase, health, judgesCount, verifyEnabled, attachStream]);
 
   const handleRevote = useCallback(async () => {
     if (!view || view.source === "import" || !view.runId) {
@@ -235,6 +331,7 @@ export default function App() {
               verdicts: result.verdicts ?? [],
               winnerId: result.winner_id ?? null,
               judgeErrors: result.errors ?? [],
+              answersDir: result.answers_dir ?? current.answersDir,
             }
           : current,
       );
@@ -398,6 +495,15 @@ export default function App() {
               {view.prompt.slice(0, 120)}
             </p>
           )}
+          {live && stageInfo && (
+            <p className="muted stage-line">
+              {t("stageLine", {
+                i: stageInfo.index,
+                n: stageInfo.total,
+                title: stageInfo.title,
+              })}
+            </p>
+          )}
           <ArenaGrid
             tiles={view.tiles}
             winnerId={view.winnerId}
@@ -418,6 +524,11 @@ export default function App() {
             revealAll={revealLosers}
             onToggleReveal={() => setRevealLosers((current) => !current)}
           />
+          {view.answersDir && (
+            <p className="answers-dir muted">
+              {t("answersSavedTo", { path: view.answersDir })}
+            </p>
+          )}
         </>
       )}
 

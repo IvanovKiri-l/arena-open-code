@@ -22,6 +22,7 @@ from unittest import mock
 # Изолированная SQLite: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-http-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "http-test.db")
+os.environ["STAGES"] = "1"
 
 from app.config import settings  # noqa: E402
 from app.core.arena import ArenaOptions, run_arena  # noqa: E402

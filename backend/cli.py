@@ -14,6 +14,7 @@ import sys
 
 from app.config import settings
 from app.core.arena import ArenaOptions, ArenaRun, run_arena
+from app.core.export_files import save_run_answers
 from app.core.judge import JudgeResult, judge_run
 from app.core.verify import VerifyError, verify_responses
 from app.db import init_db
@@ -50,6 +51,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--no-verify", dest="verify", action="store_false", help="выключить верификацию"
+    )
+    parser.add_argument(
+        "--stages", type=int, default=None, help="число этапов работы (по умолчанию STAGES)"
+    )
+    parser.add_argument(
+        "--no-screen",
+        dest="screening",
+        action="store_false",
+        default=None,
+        help="выключить ранний отбор черновиков",
     )
     return parser
 
@@ -104,6 +115,8 @@ async def main_async(args: argparse.Namespace) -> int:
         n=args.n,
         timeout_s=args.timeout,
         max_concurrency=args.concurrency,
+        stages=args.stages,
+        screening=args.screening,
     )
     run_client = FakeLLMClient() if args.fake else None
     judge_client = FakeJudgeClient(seed=1) if args.fake else None
@@ -147,6 +160,12 @@ async def main_async(args: argparse.Namespace) -> int:
         return 3
 
     _print_judgement(run, result)
+
+    try:
+        saved_to = save_run_answers(run.id)
+        print(f"Файлы ответов: {saved_to}")
+    except Exception as exc:
+        print(f"Не удалось сохранить файлы ответов: {exc}", file=sys.stderr)
     return 0
 
 

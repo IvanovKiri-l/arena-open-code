@@ -37,6 +37,13 @@ def _env_float(name: str, default: float) -> float:
     return float(raw) if raw else default
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = _env(name).lower()
+    if not raw:
+        return default
+    return raw in ("1", "true", "yes", "on")
+
+
 _load_dotenv()
 
 
@@ -53,6 +60,9 @@ class Settings:
     judge_criteria: tuple[str, ...]
     verify_cmd: str
     verify_timeout_s: float
+    stages: int
+    screening: bool
+    screen_min_score: float
     cors_origins: tuple[str, ...]
     port: int
     db_path: Path
@@ -77,6 +87,9 @@ def load_settings() -> Settings:
         judge_criteria=tuple(c.strip() for c in criteria.split(",") if c.strip()),
         verify_cmd=_env("VERIFY_CMD"),
         verify_timeout_s=_env_float("VERIFY_TIMEOUT_S", 60.0),
+        stages=_env_int("STAGES", 2),
+        screening=_env_bool("SCREENING", True),
+        screen_min_score=_env_float("SCREEN_MIN_SCORE", 3.0),
         cors_origins=tuple(o.strip() for o in _env("CORS_ORIGINS", "*").split(",") if o.strip()),
         port=_env_int("PORT", 3000),
         db_path=Path(_env("DB_PATH", "./data/arena.db")),

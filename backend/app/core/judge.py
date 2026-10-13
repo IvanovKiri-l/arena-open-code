@@ -21,7 +21,12 @@ from ..config import Settings
 from ..config import settings as default_settings
 from ..llm.base import LLMClient
 from ..llm.factory import build_client
-from ..prompts.judge import JUDGE_SYSTEM_PROMPT, build_judge_prompt
+from ..prompts.judge import (
+    JUDGE_SYSTEM_PROMPT,
+    SCREEN_SYSTEM_PROMPT,
+    build_judge_prompt,
+    build_screen_prompt,
+)
 from . import store
 
 
@@ -325,3 +330,109 @@ def _as_score(value: Any) -> float | None:
     else:
         return None
     return number if 0.0 <= number <= 10.0 else None
+
+
+# ── Ранний отбор черновиков ──────────────────────────────────────────
+
+
+@dataclass
+class ScreeningResult:
+    """Итог раннего отбора: кто вылетел и с какими баллами."""
+
+    ran: bool
+    eliminated_slots: list[int] = field(default_factory=list)
+    scores: dict[int, float] = field(default_factory=dict)
+    reasons: dict[int, str] = field(default_factory=dict)
+    error: str | None = None
+
+
+async def screen_drafts(
+    prompt: str,
+    drafts: list[dict[str, Any]],
+    *,
+    client: LLMClient,
+    min_score: float = 3.0,
+    rng: random.Random | None = None,
+    timeout_s: float = 120.0,
+) -> ScreeningResult:
+    """Ранний отбор: один вызов судьи по всем черновикам.
+
+    Слабые (ниже min_score) вылетают и не тратят токены на следующие этапы.
+    Никогда не выкидываем больше трети и всегда оставляем минимум двух
+    участников — гонка обязана состояться. При сбое отбор просто не срабатывает.
+    """
+    if len(drafts) <= 2:
+        return ScreeningResult(ran=False, error="слишком мало участников")
+
+    rnd = rng or random.Random()
+    order = list(drafts)
+    rnd.shuffle(order)
+    display = {number: record for number, record in enumerate(order, start=1)}
+    prompt_text = build_screen_prompt(
+        prompt,
+        [
+            (number, (record.get("output") or "").strip())
+            for number, record in display.items()
+        ],
+    )
+
+    parsed: dict[int, tuple[float, str]] | None = None
+    last_error: str | None = None
+    for _attempt in (1, 2):
+        try:
+            completion = await asyncio.wait_for(
+                client.complete(prompt_text, system=SCREEN_SYSTEM_PROMPT, temperature=0.1),
+                timeout=timeout_s,
+            )
+        except Exception as exc:  # сетевые/провайдерские сбои: отбор пропускаем
+            return ScreeningResult(ran=False, error=f"{type(exc).__name__}: {exc}")
+        try:
+            parsed = parse_screen(completion.output, set(display))
+            break
+        except JudgeError as exc:
+            last_error = str(exc)
+    if parsed is None:
+        return ScreeningResult(ran=False, error=last_error or "невалидный отбор")
+
+    scores = {display[number]["slot"]: score for number, (score, _reason) in parsed.items()}
+    reasons = {display[number]["slot"]: reason for number, (_score, reason) in parsed.items()}
+
+    alive = len(drafts)
+    max_eliminated = min(max(1, alive // 3), alive - 2)
+    worst = sorted(scores.items(), key=lambda item: (item[1], item[0]))
+    eliminated = [slot for slot, score in worst if score < min_score][:max_eliminated]
+    return ScreeningResult(
+        ran=True, eliminated_slots=eliminated, scores=scores, reasons=reasons
+    )
+
+
+def parse_screen(raw: str, numbers: set[int]) -> dict[int, tuple[float, str]]:
+    """Разобрать ответ судьи-фильтра: {номер: (балл, причина)}.
+
+    :raises JudgeError: если JSON невалиден или покрытие неполное.
+    """
+    data = _extract_json(raw)
+    if not isinstance(data, dict):
+        raise JudgeError("отбор судьи — не JSON-объект")
+
+    scores_raw = data.get("scores")
+    if not isinstance(scores_raw, list) or not scores_raw:
+        raise JudgeError("в отборе нет scores")
+
+    result: dict[int, tuple[float, str]] = {}
+    for item in scores_raw:
+        if not isinstance(item, dict):
+            raise JudgeError("элемент scores — не объект")
+        item_id = _as_int(item.get("id"))
+        if item_id is None or item_id not in numbers or item_id in result:
+            raise JudgeError(f"отбор: неверный id {item.get('id')!r}")
+        score = _as_score(item.get("score"))
+        if score is None:
+            raise JudgeError(f"отбор: неверный балл {item.get('score')!r}")
+        reason = item.get("reason")
+        result[item_id] = (score, str(reason).strip() if reason else "")
+
+    missing = numbers - set(result)
+    if missing:
+        raise JudgeError(f"отбор: пропущены ответы {sorted(missing)}")
+    return result

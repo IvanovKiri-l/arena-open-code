@@ -17,6 +17,7 @@ from pathlib import Path
 # Изолированная SQLite: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-fairness-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "fairness-test.db")
+os.environ["STAGES"] = "1"  # честность проверяем в одноэтапном режиме
 
 from app.core.arena import ArenaOptions, run_arena  # noqa: E402
 from app.core.judge import judge_run  # noqa: E402

@@ -58,6 +58,8 @@ const ru = {
   downloadMd: "Скачать .md",
   tileOpenHint: "Открыть и скачать ответ",
   heroHint: "Нажмите, чтобы изучить и скачать ответ",
+  answersSavedTo: "Ответы сохранены в: {path}",
+  stageLine: "Этап {i} из {n}: {title}",
 
   history: "История",
   answersCount: "ответов: {n}",
@@ -123,6 +125,8 @@ const en: Record<MsgKey, string> = {
   downloadMd: "Download .md",
   tileOpenHint: "Open and download answer",
   heroHint: "Click to study and download answer",
+  answersSavedTo: "Answers saved to: {path}",
+  stageLine: "Stage {i} of {n}: {title}",
 
   history: "History",
   answersCount: "answers: {n}",

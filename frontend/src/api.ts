@@ -32,7 +32,7 @@ export async function getHealth(): Promise<Health> {
 export async function startRun(
   prompt: string,
   options: { judges?: number; verify?: boolean } = {},
-): Promise<{ run_id: string; status: string }> {
+): Promise<{ run_id: string; status: string; stages?: string[] }> {
   const response = await fetch(apiUrl("/arena"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },

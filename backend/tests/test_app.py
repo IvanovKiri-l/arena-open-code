@@ -11,6 +11,7 @@ from pathlib import Path
 # Изолированная SQLite: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-app-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "app-test.db")
+os.environ["STAGES"] = "1"
 
 with warnings.catch_warnings():
     # starlette ругается DeprecationWarning'ом про httpx в TestClient —

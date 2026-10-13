@@ -38,8 +38,8 @@ def save_response(record: dict[str, Any]) -> None:
     _execute(
         """
         INSERT INTO responses
-            (id, run_id, slot, profile, temperature, output, latency_ms, tokens, error, status)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, run_id, slot, profile, temperature, output, latency_ms, tokens, error, status, stages)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             record["id"],
@@ -52,6 +52,7 @@ def save_response(record: dict[str, Any]) -> None:
             record.get("tokens"),
             record.get("error"),
             record.get("status", "ok"),
+            json.dumps(record.get("stages") or [], ensure_ascii=False),
         ),
     )
 
@@ -120,7 +121,11 @@ def fetch_run(run_id: str) -> dict[str, Any] | None:
 
     result = dict(run)
     result["options"] = json.loads(result.get("options") or "{}")
-    result["responses"] = [dict(row) for row in responses]
+    result["responses"] = []
+    for row in responses:
+        record = dict(row)
+        record["stages"] = json.loads(record.get("stages") or "[]")
+        result["responses"].append(record)
     result["verdicts"] = []
     for row in verdicts:
         verdict = dict(row)

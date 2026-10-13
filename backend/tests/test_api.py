@@ -17,6 +17,7 @@ from unittest import mock
 # Изолированная SQLite: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-api-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "api-test.db")
+os.environ["STAGES"] = "1"  # этапы проверяются отдельным модулем
 
 with warnings.catch_warnings():
     # starlette ругается на httpx в TestClient — только шум в тестах
@@ -24,6 +25,7 @@ with warnings.catch_warnings():
     from fastapi.testclient import TestClient  # noqa: E402
 
 from app.config import settings  # noqa: E402
+from app.core.export_files import answers_dir_for  # noqa: E402
 from app.db import init_db  # noqa: E402
 from app.llm.base import Completion, LLMClient  # noqa: E402
 from app.llm.fake import FakeJudgeClient, FakeLLMClient  # noqa: E402
@@ -91,6 +93,12 @@ class TestApi(unittest.TestCase):
 
         runs = self.client.get("/runs").json()["runs"]
         self.assertIn(run_id, [item["id"] for item in runs])
+
+        # ответы агентов сложены и на диск: data/answers/<run_id>/
+        self.assertIsNotNone(data.get("answers_dir"))
+        self.assertIn(run_id, data["answers_dir"] or "")
+        self.assertTrue(answers_dir_for(run_id).exists())
+        self.assertTrue((answers_dir_for(run_id) / "run.md").exists())
 
     def test_stream_delivers_live_events(self) -> None:
         slow = FakeLLMClient(delay_range=(0.1, 0.15), seed=2)

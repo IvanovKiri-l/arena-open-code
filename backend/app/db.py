@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS responses (
     latency_ms  INTEGER,
     tokens      INTEGER,
     error       TEXT,
-    status      TEXT NOT NULL DEFAULT 'pending'
+    status      TEXT NOT NULL DEFAULT 'pending',
+    stages      TEXT
 );
 
 CREATE TABLE IF NOT EXISTS verdicts (
@@ -71,6 +72,10 @@ def init_db() -> None:
         # WAL включается один раз; режим сохраняется в самом файле БД.
         conn.execute("PRAGMA journal_mode = WAL")
         conn.executescript(SCHEMA)
+        # Мягкие миграции для баз, созданных предыдущими версиями.
+        columns = {row["name"] for row in conn.execute("PRAGMA table_info(responses)")}
+        if "stages" not in columns:
+            conn.execute("ALTER TABLE responses ADD COLUMN stages TEXT")
         conn.commit()
     finally:
         conn.close()

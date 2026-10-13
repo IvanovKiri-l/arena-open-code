@@ -10,6 +10,7 @@ export type ResponseRecord = {
   tokens: number | null;
   error: string | null;
   status: string; // ok | error | pending | disqualified
+  stages?: { key: string; title: string; output: string }[];
 };
 
 export type VerdictScore = {
@@ -30,6 +31,7 @@ export type JudgeResultPayload = {
   winner_id: string | null;
   verdicts: VerdictRecord[];
   errors: string[];
+  answers_dir?: string | null;
 };
 
 export type RunPayload = {
@@ -41,6 +43,7 @@ export type RunPayload = {
   winner_id: string | null;
   responses: ResponseRecord[];
   verdicts: VerdictRecord[];
+  answers_dir?: string | null;
 };
 
 export type RunSummary = {
@@ -67,6 +70,9 @@ export type StreamEvent =
   | { type: "response"; data: ResponseRecord }
   | { type: "verifying" }
   | { type: "judging" }
+  | { type: "stage"; data: { index: number; total: number; title: string } }
+  | { type: "screening" }
+  | { type: "answers_saved"; data: { dir: string } }
   | { type: "verdict"; data: JudgeResultPayload }
   | { type: "error"; message: string }
   | { type: "end" };

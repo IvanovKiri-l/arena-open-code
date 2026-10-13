@@ -17,6 +17,7 @@ from pathlib import Path
 # Изолированная SQLite на время тестов: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "arena-test.db")
+os.environ["STAGES"] = "1"  # этапы проверяются отдельным модулем
 
 from app.config import settings  # noqa: E402
 from app.core import store  # noqa: E402

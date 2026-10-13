@@ -38,55 +38,94 @@ def _numbered_answers(prompt: str) -> dict[int, str]:
     }
 
 
+#: Демо-оценки раннего отбора по номеру черновика (двое слабых — выбывают).
+_SCREEN_SCORES = (9.0, 8.0, 7.0, 2.0, 6.0, 9.0, 5.0, 1.0, 8.0, 7.0)
+
+
+def _screen_result(prompt: str) -> str | None:
+    """Демо-отбор: если просят БЫСТРЫЙ ОТБОР — вернуть баллы черновикам."""
+    if "БЫСТРЫЙ ОТБОР" not in prompt:
+        return None
+    answers = _numbered_answers(prompt)
+    if not answers:
+        return None
+    scores = [
+        {
+            "id": number,
+            "score": _SCREEN_SCORES[(number - 1) % len(_SCREEN_SCORES)],
+            "reason": "mock: демо-оценка отбора",
+        }
+        for number in sorted(answers)
+    ]
+    return json.dumps({"scores": scores}, ensure_ascii=False)
+
+
 def _judge_verdict(prompt: str) -> str | None:
-    """Если у нас просят вердикт — вернуть валидный JSON (самый длинный ответ)."""
+    """Демо-судья: честная жеребьёвка по перемешанному порядку.
+
+    Выбор не зависит ни от длины, ни от стиля ответа — в демо не должно
+    появляться «любимчиков». Баллы разные, чтобы таблица скоринга была живой.
+    """
     if "winner_id" not in prompt:
         return None
     answers = _numbered_answers(prompt)
     if not answers:
         return None
-    winner = max(answers, key=lambda number: len(answers[number]))
+    winner = min(answers)  # первый ответ в перемешанном порядке
+
+    def score(number: int) -> float:
+        return 9.5 if number == winner else round(6.0 + ((number * 37) % 31) / 10.0, 1)
+
     return json.dumps(
         {
             "winner_id": winner,
             "scores": [
-                {
-                    "id": number,
-                    "score": 10.0 if number == winner else 5.0,
-                    "reason": "mock-судья: самый содержательный ответ"
-                    if number == winner
-                    else "mock",
-                }
+                {"id": number, "score": score(number), "reason": "mock: демо-оценка"}
                 for number in sorted(answers)
             ],
-            "rationale": "Mock-судья: ответы равноценны по форме, порядок перемешан — победа честная.",
+            "rationale": "Mock-судья (демо): победитель выбран из перемешанного порядка — без любимчиков.",
         },
         ensure_ascii=False,
     )
 
 
-#: Все mock-ответы выравниваются до одной длины: у судьи не должно быть
-#: «любимчиков» — ни один профиль не выигрывает только за счёт длины ответа.
-_TARGET_LENGTH = 240
-
-
 def _mock_answer(user_text: str, model: str, temperature: Any) -> str:
+    """Демо-ответы: у каждого профиля свой стиль и структура.
+
+    Это не «один и тот же бланк»: консервативный инстанс отвечает строго,
+    сбалансированный — по пунктам, креативный — альтернативами. Вместе с
+    честной жеребьёвкой в судье получается живое демо без ключей.
+    """
     try:
         temp = float(temperature)
     except (TypeError, ValueError):
         temp = 0.5
+    task = (user_text.split("\n\n---\n")[0] or user_text).strip() or "задача"
     if temp <= 0.4:
-        style = "Минимальное решение: выбран самый простой и строгий вариант."
-    elif temp <= 0.8:
-        style = "Сбалансированное решение: рассмотрены варианты и выбран практичный."
-    else:
-        style = "Креативное решение: предложены нестандартные альтернативы и эксперимент."
-    head = f"Mock-ответ модели «{model}» (temperature={temp:.1f}). Задача: {user_text.strip()}"
-    body = f"{head}\n\n{style} "
-    filler = "Дополнение не влияет на оценку судьи. "
-    while len(body) < _TARGET_LENGTH:
-        body += filler
-    return body[:_TARGET_LENGTH]
+        return (
+            f"Консервативный вариант по задаче «{task}»:\n\n"
+            "1. Минимум сущностей: только обязательные шаги, без украшений.\n"
+            "2. Проверенная структура: беру самый надёжный шаблон и строго следую ему.\n"
+            "3. Никаких допущений: всё спорное вынесено на уточнение.\n"
+            "Итог: строгий и предсказуемый ответ — хорош, когда важнее надёжность."
+        )
+    if temp <= 0.8:
+        return (
+            f"Сбалансированный разбор «{task}»:\n\n"
+            "• Цель: что именно должно получиться на выходе.\n"
+            "• План: четыре шага с приоритетами и разумными сроками.\n"
+            "• Пример: короткая иллюстрация, как решение выглядит в жизни.\n"
+            "• Риски: два частых промаха и как заметить их заранее.\n"
+            "Итог: практичный вариант — оптимум полноты и простоты."
+        )
+    return (
+        f"Креативный взгляд на «{task}» — три альтернативы:\n\n"
+        "1) Безопасная: классический путь, но отполированный до блеска.\n"
+        "2) Смелая: переворачиваю исходные допущения и играю на них.\n"
+        "3) Эксперимент: быстрый прототип, который проверит идею за час.\n"
+        "Плюс неожиданный угол: как эту задачу решали бы в другой области.\n"
+        "Итог: комбинирую базу из (1) со смелостью из (3)."
+    )
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -119,6 +158,18 @@ class Handler(BaseHTTPRequestHandler):
         payload = self._read_payload()
         model = str(payload.get("model") or "mock-model")
         user_text = _extract_user_text(payload.get("messages") or [])
+
+        screen_json = _screen_result(user_text)
+        if screen_json is not None:
+            self._send_json(
+                200,
+                {
+                    "model": model,
+                    "choices": [{"message": {"role": "assistant", "content": screen_json}}],
+                    "usage": {"total_tokens": 30},
+                },
+            )
+            return
 
         verdict_json = _judge_verdict(user_text)
         if verdict_json is not None:

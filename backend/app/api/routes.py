@@ -23,9 +23,11 @@ from pydantic import BaseModel, Field
 from ..config import settings
 from ..core import store
 from ..core.arena import ArenaOptions, run_arena
+from ..core.export_files import relative_answers_dir, save_run_answers
 from ..core.hub import RunChannel, hub
 from ..core.judge import judge_run
 from ..core.verify import verify_responses
+from ..prompts.stages import STAGES
 
 router = APIRouter()
 
@@ -53,6 +55,8 @@ class ArenaRequest(BaseModel):
     timeout_s: float | None = Field(default=None, gt=0)
     max_concurrency: int | None = Field(default=None, ge=1, le=100)
     verify: bool | None = None
+    stages: int | None = Field(default=None, ge=1, le=9)
+    screening: bool | None = None
 
 
 class JudgeRequest(BaseModel):
@@ -89,6 +93,7 @@ def _public_run(stored: dict[str, Any]) -> dict[str, Any]:
             _public_response(r) for r in sorted(stored["responses"], key=lambda r: r["slot"])
         ],
         "verdicts": [_public_verdict(v) for v in stored["verdicts"]],
+        "answers_dir": relative_answers_dir(stored["id"]),
     }
 
 
@@ -111,7 +116,11 @@ async def start_arena(request: ArenaRequest) -> dict[str, Any]:
         n=request.n,
         timeout_s=request.timeout_s,
         max_concurrency=request.max_concurrency,
+        stages=request.stages,
+        screening=request.screening,
     )
+    stages_total = max(1, request.stages or settings.stages)
+    stage_titles = [STAGES[index % len(STAGES)].title for index in range(stages_total)]
     # Канал открываем синхронно, чтобы стрим можно было слушать сразу.
     hub.open(run_id)
     _spawn(
@@ -124,7 +133,7 @@ async def start_arena(request: ArenaRequest) -> dict[str, Any]:
             verify=request.verify,
         )
     )
-    return {"run_id": run_id, "status": "running"}
+    return {"run_id": run_id, "status": "running", "stages": stage_titles}
 
 
 async def _execute_run(
@@ -144,6 +153,12 @@ async def _execute_run(
         def on_response(record: dict[str, Any]) -> None:
             hub.publish(run_id, {"type": "response", "data": _public_response(record)})
 
+        def on_stage(info: dict[str, Any]) -> None:
+            hub.publish(run_id, {"type": "stage", "data": info})
+
+        def on_screening() -> None:
+            hub.publish(run_id, {"type": "screening"})
+
         try:
             run = await run_arena(
                 prompt,
@@ -151,6 +166,8 @@ async def _execute_run(
                 run_id=run_id,
                 on_chunk=on_chunk,
                 on_response=on_response,
+                on_stage=on_stage,
+                on_screening=on_screening,
             )
         except Exception as exc:  # сбой конфигурации и т.п.
             hub.publish(run_id, {"type": "error", "message": f"{type(exc).__name__}: {exc}"})
@@ -188,6 +205,19 @@ async def _execute_run(
                     },
                 },
             )
+            # Файловая копия ответов: удобно смотреть глазами. Не критично —
+            # при сбое диска забег всё равно остаётся в SQLite.
+            try:
+                save_run_answers(run_id)
+                hub.publish(
+                    run_id,
+                    {
+                        "type": "answers_saved",
+                        "data": {"dir": relative_answers_dir(run_id) or ""},
+                    },
+                )
+            except Exception:
+                pass
         except Exception as exc:
             hub.publish(
                 run_id,
@@ -305,10 +335,15 @@ async def rejudge_arena(run_id: str, request: JudgeRequest | None = None) -> dic
         judges=request.judges if request else None,
         criteria=request.criteria if request else None,
     )
+    try:
+        save_run_answers(run_id)
+    except Exception:
+        pass  # файловая копия не критична
     return {
         "winner_id": result.winner_id,
         "verdicts": [_public_verdict(v) for v in result.verdicts],
         "errors": result.errors,
+        "answers_dir": relative_answers_dir(run_id),
     }
 
 

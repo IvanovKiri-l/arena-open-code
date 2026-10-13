@@ -85,6 +85,21 @@ export default function AnswerModal({ record, isWinner, runId, onClose }: Props)
 
         <pre className="modal-text">{text || "…"}</pre>
 
+        {record.stages && record.stages.length > 0 && (
+          <div className="modal-stages">
+            {record.stages.map((stage, index) => (
+              <details
+                key={`${stage.key}-${index}`}
+                className="stage-block"
+                open={index === 0}
+              >
+                <summary>{stage.title}</summary>
+                <pre className="modal-text stage-text">{stage.output || "…"}</pre>
+              </details>
+            ))}
+          </div>
+        )}
+
         <footer className="modal-actions">
           <button className="ghost" onClick={() => download("txt")}>
             {t("downloadTxt")}

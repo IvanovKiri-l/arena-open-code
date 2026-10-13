@@ -17,6 +17,7 @@ from typing import Any
 # Изолированная SQLite: задаём ДО импорта app-модулей.
 _TMP_DIR = tempfile.mkdtemp(prefix="arena-judge-test-")
 os.environ["DB_PATH"] = str(Path(_TMP_DIR) / "judge-test.db")
+os.environ["STAGES"] = "1"
 
 from app.config import settings  # noqa: E402
 from app.core import store  # noqa: E402
